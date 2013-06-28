@@ -37,6 +37,7 @@ func MakeParser(cb Callback) *parser {
     fmt.Printf("Calling recover action.\n")
     if prsr.tag != nil {
       prsr.callback.Bad(prsr.tag)
+      prsr.tag = nil
     } else {
       fmt.Printf("No tag found, ignoring whole line.")
     }
