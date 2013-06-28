@@ -1,0 +1,79 @@
+package parser
+
+import (
+  "fmt"
+)
+
+type Callback interface {
+  Noop(tag []byte);
+  Bad(tag []byte);
+}
+
+type parser struct {
+  cs int;
+  p int;
+  buf []byte;
+  tag_start int;
+  tag []byte;
+  callback Callback;
+}
+
+func MakeParser(cb Callback) *parser {
+  p := new(parser)
+  p.callback = cb
+  return p
+}
+
+%%{
+  machine parser;
+  
+  action record_tag_start { prsr.tag_start = fpc; fmt.Printf("Tag start: %d\n", fpc) }
+  action record_tag_end { prsr.tag = prsr.buf[prsr.tag_start:fpc]; fmt.Printf("Tag end: %d\n", fpc) }
+  
+  action call_callback { fmt.Printf("Calling callback.\n"); prsr.callback.Noop(prsr.tag); prsr.tag = nil }
+  
+  action begin_error_recovery { fmt.Printf("Calling error action.\n"); fgoto consume_all; }
+  action end_error_recovery {
+    fmt.Printf("Calling recover action.\n")
+    if prsr.tag != nil {
+      prsr.callback.Bad(prsr.tag)
+    } else {
+      fmt.Printf("No tag found, ignoring whole line.")
+    }
+    fgoto main;
+  }
+  
+  crlf = '\r\n';
+  ctl = cntrl | 0x7F;
+
+  list_wildcards = '%' | '*';
+  quoted_specials = '"' | '\\';
+  resp_specials = ']';
+  atom_specials = '(' | ')' | '{' | ' ' | ctl | list_wildcards | quoted_specials | resp_specials;
+
+  atom_char = (0x01 .. 0x7e) - atom_specials;
+  astring_char = atom_char | resp_specials;
+
+  tag_char = astring_char - '+';
+  tag = tag_char+ >record_tag_start %record_tag_end;
+
+  command_any = 'NOOP'i;
+  command = tag . ' ' . command_any . crlf @call_callback ;
+  
+  consume_all := (any* - (any* . crlf . any*)) . crlf @end_error_recovery;
+  
+  main := command* $!begin_error_recovery;
+}%%
+
+%% write data;
+
+
+
+func (prsr *parser) Parse(in []byte) {
+  prsr.buf = append(prsr.buf, in...)
+  cs, p, pe, data, eof := prsr.cs, prsr.p, len(prsr.buf), prsr.buf, -1
+  %% write init;
+  %% write exec;
+  prsr.cs = cs
+  prsr.p = p
+}
